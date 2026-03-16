@@ -53,3 +53,5 @@ doc/
 
 .claude/
 CLAUDE.md
+.server.pid
+.server.log
