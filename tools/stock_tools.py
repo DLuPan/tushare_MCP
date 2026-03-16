@@ -1,5 +1,6 @@
 """股票相关MCP工具"""
 import tushare as ts
+import akshare as ak
 import pandas as pd
 from typing import TYPE_CHECKING, Optional, List
 from datetime import datetime
@@ -17,6 +18,7 @@ from cache.cyq_perf_cache_manager import cyq_perf_cache_manager
 from cache.daily_basic_cache_manager import daily_basic_cache_manager
 from cache.mapping_cache_manager import mapping_cache_manager
 from cache.stock_intraday_cache_manager import stock_intraday_cache_manager
+from cache.stock_rt_cache_manager import stock_rt_cache_manager
 from utils.common import format_date
 
 def register_stock_tools(mcp: "FastMCP"):
@@ -2475,74 +2477,61 @@ def register_stock_tools(mcp: "FastMCP"):
     ) -> str:
         """
         获取沪深京实时日线行情数据
-        
+
         参数:
             ts_code: 股票代码（必填，支持通配符方式）
                 - 单个股票：600000.SH、000001.SZ、430047.BJ
-                - 通配符方式：6*.SH（所有6开头的沪市股票）、301*.SZ（所有301开头的深市股票）、0*.SZ（所有0开头的深市股票）、9*.BJ（所有9开头的北交所股票）
+                - 通配符方式：6*.SH（所有 6 开头的沪市股票）、301*.SZ（所有 301 开头的深市股票）、0*.SZ（所有 0 开头的深市股票）、9*.BJ（所有 9 开头的北交所股票）
                 - 多个股票或通配符：600000.SH,000001.SZ 或 6*.SH,0*.SZ
-                - 注意：代码必须带.SH/.SZ/.BJ后缀
-        
+                - 注意：代码必须带.SH/.SZ/.BJ 后缀
+
         返回:
             包含沪深京实时日线行情数据的格式化字符串
-        
+
         说明:
-            - 数据来源：Tushare rt_k接口
-            - 获取实时日k线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日k线行情
+            - 数据来源：Tushare rt_k 接口（优先），Akshare 作为备用
+            - 缓存策略：5 分钟 TTL，提高响应速度并减少 API 调用
+            - 获取实时日 k 线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日 k 线行情
             - 显示开盘、最高、最低、收盘（最新价）、成交量、成交金额、成交笔数、委托买卖盘等数据
             - 权限要求：本接口是单独开权限的数据，单独申请权限请参考权限列表
-            - 限量：单次最大可提取6000条数据，等同于一次提取全市场
+            - 限量：单次最大可提取 6000 条数据，等同于一次提取全市场
             - 注意：不建议一次提取全市场，可分批提取性能更好
         """
         token = get_tushare_token()
         if not token:
-            return "请先配置Tushare token"
-        
+            return "请先配置 Tushare token"
+
         # 参数验证
         if not ts_code:
-            return "请提供股票代码(ts_code)，支持通配符方式，如：600000.SH、6*.SH、301*.SZ等，代码必须带.SH/.SZ/.BJ后缀"
-        
-        # 验证代码格式（必须包含.SH/.SZ/.BJ后缀）
+            return "请提供股票代码 (ts_code)，支持通配符方式，如：600000.SH、6*.SH、301*.SZ 等，代码必须带.SH/.SZ/.BJ 后缀"
+
+        # 验证代码格式（必须包含.SH/.SZ/.BJ 后缀）
         codes = [code.strip() for code in ts_code.split(',')]
         for code in codes:
             if not (code.endswith('.SH') or code.endswith('.SZ') or code.endswith('.BJ')):
-                return f"股票代码格式错误：{code}\n代码必须带.SH/.SZ/.BJ后缀，如：600000.SH、000001.SZ、430047.BJ"
-        
+                return f"股票代码格式错误：{code}\n代码必须带.SH/.SZ/.BJ 后缀，如：600000.SH、000001.SZ、430047.BJ"
+
         try:
-            pro = ts.pro_api()
-            
-            # 构建查询参数
-            params = {
-                'ts_code': ts_code
-            }
-            
-            # 实时数据不缓存
-            try:
-                df = pro.rt_k(**params)
-            except Exception as api_error:
-                error_msg = str(api_error)
-                # 检查是否是接口名错误
-                if '接口名' in error_msg or 'api_name' in error_msg.lower() or '请指定正确的接口名' in error_msg:
-                    return f"API接口调用失败：{error_msg}\n\n已使用接口：rt_k\n\n可能的原因：\n1. Tushare token是否有效\n2. 是否已开通沪深京实时日线行情权限\n3. 网络连接是否正常\n4. 股票代码格式是否正确（必须带.SH/.SZ/.BJ后缀）\n\n建议：\n- 请查看Tushare文档确认rt_k接口是否可用\n- 检查是否已开通相应权限"
-                else:
-                    return f"API调用失败：{error_msg}\n请检查：\n1. Tushare token是否有效\n2. 是否已开通沪深京实时日线行情权限\n3. 网络连接是否正常\n4. 股票代码格式是否正确"
-            
+            # 使用带缓存和备用数据源的获取函数
+            df, source, error_msg = _fetch_stock_rt_k_with_cache(ts_code)
+
             if df is None or df.empty:
-                return f"未找到符合条件的沪深京实时日线行情数据\n查询条件: 股票代码: {ts_code}"
-            
+                if error_msg:
+                    return f"未找到符合条件的沪深京实时日线行情数据\n查询条件：股票代码：{ts_code}\n\n详细：{error_msg}"
+                return f"未找到符合条件的沪深京实时日线行情数据\n查询条件：股票代码：{ts_code}"
+
             # 按成交量排序（降序），显示最活跃的股票
             if 'vol' in df.columns:
                 df = df.sort_values('vol', ascending=False, na_position='last')
-            
-            # 格式化输出
-            return format_stock_rt_k_data(df, ts_code)
-            
+
+            # 格式化输出（传递 source 参数）
+            return format_stock_rt_k_data(df, ts_code, source)
+
         except Exception as e:
             import traceback
             error_detail = traceback.format_exc()
             return f"查询失败：{str(e)}\n详细信息：{error_detail}"
-    
-    @mcp.tool()
+
     def get_share_float(
         ts_code: str = "",
         ann_date: str = "",
@@ -5476,7 +5465,156 @@ def format_stock_min_data(df: pd.DataFrame, ts_code: str = "", freq: str = "1MIN
     return "\n".join(result)
 
 
-def format_stock_rt_k_data(df: pd.DataFrame, ts_code: str = "") -> str:
+
+
+def _convert_akshare_code_to_ts(code: str) -> str:
+    """
+    将 Akshare 返回的股票代码转换为 Tushare 格式
+    
+    Akshare 返回的代码格式：
+    - 沪市：600000
+    - 深市：000001
+    - 创业板：300xxx
+    - 北交所：430xxx, 832xxx 等
+    
+    Tushare 格式：
+    - 沪市：600000.SH
+    - 深市：000001.SZ
+    - 北交所：430047.BJ
+    """
+    if code.endswith('.SH') or code.endswith('.SZ') or code.endswith('.BJ'):
+        return code
+    
+    code = str(code).zfill(6)  # 补齐 6 位数字
+    
+    # 根据代码前缀判断市场
+    if code.startswith('6') or code.startswith('9'):
+        return f"{code}.SH"  # 沪市
+    elif code.startswith('0') or code.startswith('3'):
+        return f"{code}.SZ"  # 深市
+    elif code.startswith('4') or code.startswith('8'):
+        return f"{code}.BJ"  # 北交所
+    else:
+        # 默认返回深市
+        return f"{code}.SZ"
+
+
+def _fetch_rt_k_from_akshare(ts_code: str = "") -> pd.DataFrame:
+    """
+    从 Akshare 获取沪深京实时日线行情数据
+    
+    参数:
+        ts_code: 股票代码（支持多个，逗号分隔）
+    
+    返回:
+        DataFrame，格式与 Tushare rt_k 保持一致
+    """
+    try:
+        # 获取沪深 A 股实时行情
+        df = ak.stock_zh_a_spot_em()
+        
+        if df is None or df.empty:
+            return pd.DataFrame()
+        
+        # 代码转换：从 Akshare 格式转换为 Tushare 格式
+        df['ts_code'] = df['代码'].apply(_convert_akshare_code_to_ts)
+        
+        # 如果需要筛选特定股票
+        if ts_code:
+            codes = [c.strip() for c in ts_code.split(',')]
+            # 将 Tushare 代码转换为 Akshare 格式进行匹配
+            ak_codes = [c.replace('.SH', '').replace('.SZ', '').replace('.BJ', '') for c in codes]
+            df = df[df['代码'].isin(ak_codes)]
+        
+        # 字段映射到 Tushare rt_k 格式
+        result = pd.DataFrame()
+        result['ts_code'] = df['ts_code']
+        result['name'] = df['名称']
+        result['close'] = df['最新价']
+        result['open'] = df['今开']
+        result['high'] = df['最高']
+        result['low'] = df['最低']
+        result['pre_close'] = df['昨收']
+        result['change'] = df['涨跌额']
+        result['pct_chg'] = df['涨跌幅']
+        result['vol'] = df['成交量']
+        result['amount'] = df['成交额']
+        # 添加 num 字段（成交笔数），Akshare 没有此字段，设为 0
+        result['num'] = 0
+        
+        return result
+        
+    except Exception as e:
+        print(f"Akshare 获取实时行情失败：{str(e)}", file=__import__('sys').stderr)
+        return pd.DataFrame()
+
+
+def _fetch_stock_rt_k_with_cache(ts_code: str = "") -> tuple:
+    """
+    获取沪深京实时日线行情数据（带缓存和备用数据源）
+    
+    策略：
+    1. 先检查缓存（5 分钟 TTL）
+    2. 缓存过期则优先调用 Tushare
+    3. Tushare 失败则调用 Akshare 作为备用
+    4. 获取数据后更新缓存
+    
+    参数:
+        ts_code: 股票代码
+    
+    返回:
+        tuple: (df, source, error_msg)
+            - df: DataFrame 数据
+            - source: 数据来源 ('cache', 'tushare', 'akshare')
+            - error_msg: 错误信息（如果有）
+    """
+    import sys
+    
+    # 检查缓存（对于指定股票）
+    if ts_code and ',' not in ts_code:  # 单个股票可以检查缓存
+        cached = stock_rt_cache_manager.get_snapshot(ts_code)
+        if cached:
+            # 从缓存构建 DataFrame
+            df = pd.DataFrame([[
+                cached['ts_code'], cached['name'], cached['close'],
+                cached['open'], cached['high'], cached['low'],
+                cached['pre_close'], cached['change'], cached['pct_chg'],
+                cached['vol'], cached['amount'], 0
+            ]], columns=['ts_code', 'name', 'close', 'open', 'high', 'low',
+                        'pre_close', 'change', 'pct_chg', 'vol', 'amount', 'num'])
+            return df, 'cache', None
+    
+    # 缓存过期或无缓存，获取新数据
+    # 1. 优先尝试 Tushare
+    df = pd.DataFrame()
+    tushare_error = None
+    
+    try:
+        pro = ts.pro_api()
+        df = pro.rt_k(ts_code=ts_code)
+        if df is not None and not df.empty:
+            # 保存到缓存
+            stock_rt_cache_manager.save_snapshot(df)
+            return df, 'tushare', None
+    except Exception as e:
+        tushare_error = str(e)
+        print(f"Tushare rt_k 调用失败：{tushare_error}", file=sys.stderr)
+    
+    # 2. Tushare 失败，尝试 Akshare
+    try:
+        df = _fetch_rt_k_from_akshare(ts_code)
+        if df is not None and not df.empty:
+            # 保存到缓存
+            stock_rt_cache_manager.save_snapshot(df)
+            return df, 'akshare', None
+    except Exception as e:
+        print(f"Akshare 调用失败：{str(e)}", file=sys.stderr)
+    
+    # 3. 都失败，返回错误信息
+    error_msg = f"数据获取失败：Tushare({tushare_error or '无数据'}), Akshare(失败)"
+    return pd.DataFrame(), 'error', error_msg
+
+def format_stock_rt_k_data(df: pd.DataFrame, ts_code: str = "", source: str = "tushare") -> str:
     """
     格式化沪深京实时日线行情数据输出
     
@@ -5491,7 +5629,10 @@ def format_stock_rt_k_data(df: pd.DataFrame, ts_code: str = "") -> str:
         return "未找到符合条件的沪深京实时日线行情数据"
     
     result = []
-    result.append("📈 沪深京实时日线行情数据")
+    # 显示数据来源
+    source_map = {'cache': '🟢 缓存', 'tushare': '🔵 Tushare', 'akshare': '🟠 Akshare'}
+    source_display = source_map.get(source, source)
+    result.append(f"📈 沪深京实时日线行情数据 ({source_display})")
     result.append("=" * 180)
     result.append("")
     

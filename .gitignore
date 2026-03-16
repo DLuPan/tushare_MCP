@@ -50,3 +50,6 @@ Thumbs.db
 相对强度Alpha模型策略分析.md
 缓存策略优化方案.md
 doc/
+
+.claude/
+CLAUDE.md

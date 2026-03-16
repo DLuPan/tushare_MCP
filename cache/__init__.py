@@ -11,6 +11,9 @@ from cache.daily_basic_cache_manager import DailyBasicCacheManager, daily_basic_
 from cache.fina_indicator_cache_manager import FinaIndicatorCacheManager, fina_indicator_cache_manager
 from cache.stock_daily_cache_manager import StockDailyCacheManager, stock_daily_cache_manager
 from cache.stock_weekly_cache_manager import StockWeeklyCacheManager, stock_weekly_cache_manager
+from cache.mapping_cache_manager import MappingCacheManager, mapping_cache_manager
+from cache.stock_intraday_cache_manager import StockIntradayCacheManager, stock_intraday_cache_manager
+from cache.stock_rt_cache_manager import StockRtCacheManager, stock_rt_cache_manager
 
 __all__ = [
     'CacheManager', 'cache_manager',
@@ -24,6 +27,9 @@ __all__ = [
     'DailyBasicCacheManager', 'daily_basic_cache_manager',
     'FinaIndicatorCacheManager', 'fina_indicator_cache_manager',
     'StockDailyCacheManager', 'stock_daily_cache_manager',
-    'StockWeeklyCacheManager', 'stock_weekly_cache_manager'
+    'StockWeeklyCacheManager', 'stock_weekly_cache_manager',
+    'MappingCacheManager', 'mapping_cache_manager',
+    'StockIntradayCacheManager', 'stock_intraday_cache_manager',
+    'StockRtCacheManager', 'stock_rt_cache_manager'
 ]
 

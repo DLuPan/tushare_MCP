@@ -5,31 +5,27 @@
 #   chmod +x start_http_server.sh
 #   ./start_http_server.sh
 
+# 切换到脚本所在目录
+cd "$(dirname "$0")" || exit 1
+
 echo "========================================"
 echo "Tushare MCP Server (HTTP SSE Mode)"
 echo "========================================"
 echo ""
 
-# 检查 Python 是否安装
-if ! command -v python3 &> /dev/null; then
-    echo "[错误] 未找到 Python，请先安装 Python 3.9+"
+# 检查依赖
+echo "[1/4] 检查依赖和环境..."
+if ! command -v uvicorn &> /dev/null; then
+    echo "[错误] uvicorn 未安装！"
+    echo "请运行: pip install -r requirements.txt"
     exit 1
 fi
-
-# 检查依赖是否安装
-echo "[1/4] 检查依赖..."
-if ! python3 -c "import mcp" &> /dev/null; then
-    echo "[警告] 依赖未安装，正在安装..."
-    pip3 install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "[错误] 依赖安装失败"
-        exit 1
-    fi
-fi
+echo "[成功] uvicorn 已安装"
+echo ""
 
 # 检查端口占用
 echo "[2/4] 检查端口占用 (8000)..."
-if lsof -Pi :8000 -sTCP:LISTEN -t &> /dev/null; then
+if command -v lsof &> /dev/null && lsof -Pi :8000 -sTCP:LISTEN -t &> /dev/null; then
     echo "[警告] 端口 8000 已被占用！"
     echo ""
     
@@ -77,16 +73,19 @@ if lsof -Pi :8000 -sTCP:LISTEN -t &> /dev/null; then
         exit 0
     fi
     echo ""
-fi
-
-# 检查 Tushare Token
-echo "[3/4] 检查 Tushare Token..."
-if ! python3 -c "from config.token_manager import get_tushare_token; token = get_tushare_token(); exit(0 if token else 1)" &> /dev/null; then
-    echo "[警告] 未配置 Tushare Token"
-    echo "请在 .env 文件中配置 TUSHARE_TOKEN"
-    echo "或通过 /tools 接口查看配置说明"
+else
+    echo "[信息] 端口 8000 未被占用"
     echo ""
 fi
+
+# 检查 Python 虚拟环境
+echo "[3/4] 检查 Python 环境..."
+if [ -n "$VIRTUAL_ENV" ]; then
+    echo "[信息] 已激活虚拟环境: $VIRTUAL_ENV"
+else
+    echo "[警告] 未检测到虚拟环境，建议在虚拟环境中运行"
+fi
+echo ""
 
 # 启动服务器
 echo "[4/4] 启动 HTTP SSE 服务器..."
@@ -102,5 +101,5 @@ echo "按 Ctrl+C 停止服务器"
 echo "========================================"
 echo ""
 
-python3 server_http.py
+uvicorn server_http:app --host 127.0.0.1 --port 8000
 
