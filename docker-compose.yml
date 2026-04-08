@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  tushare-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tushare-mcp:latest
+    container_name: tushare-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 运行模式：stdio 或 http
+      - SERVER_MODE=http
+      # Tushare Token（必须配置）
+      - TUSHARE_TOKEN=${TUSHARE_TOKEN:-}
+      # 可选：自定义监听地址和端口
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      # 持久化缓存数据
+      - ./data/cache:/app/.cache
+      # 挂载.env 文件（可选，如果不想用环境变量）
+      - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r = httpx.get('http://localhost:8000/health', timeout=5); exit(0 if r.status_code == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - tushare-mcp-network
+
+networks:
+  tushare-mcp-network:
+    driver: bridge

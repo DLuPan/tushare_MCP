@@ -38,7 +38,7 @@ ENV/
 .test/
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
 
 # Documentation files
 功能说明
@@ -55,3 +55,4 @@ doc/
 CLAUDE.md
 .server.pid
 .server.log
+.env

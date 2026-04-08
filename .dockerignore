@@ -1,0 +1,77 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+
+# MCP Server runtime
+.server.pid
+.server.log
+
+# Cache (will be mounted as volume)
+.cache/
+cache/*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+doc/
+*.md
+!README.md
+
+# Test files
+test_*.py
+tests/
+*.test.py
+
+# Scripts
+scripts/
+
+# Claude Code specific
+.claude/
+CLAUDE.md
+
+# Other
+*.log
+*.tmp
+report.txt
+*.csv
